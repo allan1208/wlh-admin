@@ -30,20 +30,20 @@
         <Modal v-model="programModal" :closable='false' :mask-closable=false :width="500">
             <h3 slot="header" style="color:#2D8CF0">{{modalTitle}}</h3>
             <Form ref="programForm" :model="programForm" :label-width="100" label-position="right" :rules="programRules">
-                <FormItem label="名称" prop="name">
-                    <Input v-model="programForm.name" placeholder="请输入作品名称"></Input>
+                <FormItem label="名称" prop="title">
+                    <Input v-model="programForm.title" placeholder="请输入作品名称"></Input>
                 </FormItem>
-                <FormItem label="学生" prop="student">
-                    <Input v-model="programForm.student" placeholder="请输入学生姓名"></Input>
+                <FormItem label="学生" prop="student_name">
+                    <Input v-model="programForm.student_name" placeholder="请输入学生姓名"></Input>
                 </FormItem>
-                <FormItem label="描述" prop="desc">
-                    <Input v-model="programForm.desc" type="textarea" :autosize="{minRows: 2,maxRows: 5}" placeholder="请输入作品描述"></Input>
+                <FormItem label="描述" prop="descr">
+                    <Input v-model="programForm.descr" type="textarea" :autosize="{minRows: 2,maxRows: 5}" placeholder="请输入作品描述"></Input>
                 </FormItem>
-                <FormItem label="封面图片" prop="imageUrl">
+                <!-- <FormItem label="封面图片" prop="imageUrl">
                     <Input v-model="programForm.imageUrl" placeholder="请输入封面图片地址"></Input>
-                </FormItem>
-                <FormItem label="作品文件" prop="assetUrl">
-                    <Input v-model="programForm.assetUrl" placeholder="请输入作品文件地址"></Input>
+                </FormItem> -->
+                <FormItem label="作品文件" prop="program_file">
+                    <input type="file" placeholder="请输入作品文件地址" ref="programFile"></input>
                 </FormItem>
             </Form>
             <div slot="footer">
@@ -56,12 +56,14 @@
 </template>
 
 <script>
-import {mockProgamList} from './data/mock-data';
+// import {mockProgamList} from './data/mock-data';
+import axios from 'axios';
+
 export default {
     name: 'program-list',
     data () {
         return {
-            loading: true,
+            loading: false,
             programList: [],
             initProgramList: [],
             searchParam: {
@@ -69,11 +71,11 @@ export default {
                 student: ''
             },
             columns: [
-                {key: 'name', title: '作品名称'},
-                {key: 'desc', title: '作品介绍', width: 200},
-                {key: 'student', title: '学生'},
+                {key: 'title', title: '作品名称'},
+                {key: 'descr', title: '作品介绍', width: 200},
+                {key: 'student_name', title: '学生'},
                 {key: 'image', title: '封面图'},
-                {key: 'asset', title: '文件'},
+                {key: 'program_file', title: '文件'},
                 {
                     key: 'publishTime',
                     title: '发布时间',
@@ -124,18 +126,22 @@ export default {
                 action: '',
                 index: 0,
                 programId: '',
-                name: '',
-                student: '',
-                desc: '',
+                title: '',
+                student_name: '',
+                descr: '',
                 imageUrl: '',
-                assetUrl: ''
+                assetUrl: '',
+                program_file: ''
             },
             programRules: {
-                name: [
+                title: [
                     { required: true, message: '请输入作品名称', trigger: 'blur' }
                 ],
-                student: [
+                student_name: [
                     { required: true, message: '请输入学生姓名', trigger: 'blur' }
+                ],
+                descr: [
+                    { required: true, message: '请输入描述', trigger: 'blur' }
                 ]
             }
         };
@@ -148,10 +154,16 @@ export default {
     },
     methods: {
         init () {
-            this.programList = this.initProgramList = mockProgamList;
-            setTimeout(() => {
+            this.queryPrograms();
+            // this.programList = this.initProgramList = mockProgamList;
+        },
+        queryPrograms () {
+            this.loading = true;
+            axios.get('http://testapi.wlhcode.com/programs.json').then(res => {
+                let programData = res.data.data;
+                this.programList = this.initProgramList = JSON.parse(programData);
                 this.loading = false;
-            }, 1000);
+            });
         },
         search (data, argumentObj) {
             let res = data;
@@ -215,13 +227,17 @@ export default {
         showEdit (row, index) {
             this.programForm.action = 'update';
             this.programForm.index = index;
-            this.programForm.programId = row.programId || '';
-            this.programForm.name = row.name;
-            this.programForm.student = row.student;
-            this.programForm.desc = row.desc;
+            this.programForm.programId = row.id || '';
+            this.programForm.name = row.title;
+            this.programForm.student = row.student_name;
+            this.programForm.desc = row.descr;
             this.programForm.imageUrl = row.imageUrl;
-            this.programForm.assetUrl = row.assetUrl;
+            this.programForm.assetUrl = row.program_file;
             this.programModal = true;
+        },
+        getFile (event) {
+            this.programForm.program_file = event.target.files[0];
+            console.log(this.programForm.program_file);
         },
         cancelModal () {
             this.programModal = false;
@@ -229,22 +245,71 @@ export default {
         saveProgram () {
             this.$refs['programForm'].validate((valid) => {
                 if (valid) {
-                    this.saveProgramLoading = true;
-                    setTimeout(() => {
-                        if (this.programForm.action === 'create') {
-                            this.initProgramList.splice(0, 0, this.programForm);
-                            this.programList = this.initProgramList;
-                        }
-                        // if (this.programForm.action === 'update') {
-                        //     this.$set(this.initProgramList, this.programForm.index, this.programForm);
-                        //     this.programList = this.initProgramList;
-                        // }
-                        this.$Message.success('保存成功');
-                        this.saveProgramLoading = false;
-                        this.programModal = false;
-                    }, 1000);
+                    if (this.programForm.action === 'create') {
+                        this.createProgram();
+                    }
+                    if (this.programForm.action === 'update') {
+                        this.$Modal.info({
+                            title: '提示',
+                            content: '修改功能开发中'
+                        });
+                    }
                 }
             });
+        },
+        createProgram () {
+            if (this.$refs.programFile.files.length === 0) {
+                this.$Modal.warning({
+                    title: '提示',
+                    content: '请选择上传文件'
+                });
+                return;
+            }
+            this.saveProgramLoading = true;
+
+            // let payload = {
+            //     'program[title]': this.programForm.title,
+            //     'program[student_name]': this.programForm.student_name,
+            //     'program[descr]': this.programForm.descr,
+            //     'program[program_file]': this.programForm.program_file
+            // };
+            // var qs = require('qs');
+            let formData = new FormData();
+            formData.append('program[title]', this.programForm.title);
+            formData.append('program[student_name]', this.programForm.student_name);
+            formData.append('program[descr]', this.programForm.descr);
+            formData.append('program[program_file]', this.$refs.programFile.files[0]);
+            let config = {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            };
+            const vm = this;
+            axios.post('http://testapi.wlhcode.com/programs.json', formData, config)
+                .then(function (res) {
+                    if (res.status === 200) {
+                        console.log(res);
+                        if (res.data.isok) {
+                            vm.$Message.success('保存成功');
+                            vm.saveProgramLoading = false;
+                            vm.programModal = false;
+                            vm.queryPrograms();
+                        } else {
+                            vm.$Modal.error({
+                                title: '提示',
+                                content: '保存失败,[' + res.data.err + ']' + res.data.msg
+                            });
+                            vm.saveProgramLoading = false;
+                        }
+                    }
+                })
+                .catch(function () {
+                    vm.$Modal.error({
+                        title: '提示',
+                        content: '服务器异常'
+                    });
+                    vm.saveProgramLoading = false;
+                });
         },
         remove (index) {
             this.$Modal.confirm({
